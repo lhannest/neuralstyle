@@ -1,3 +1,6 @@
+# File aquired from https://github.com/Lasagne/Recipes/blob/master/modelzoo/vgg19.py on June 2, 2016.
+# I have slightly modified it for my use.
+
 # VGG-19, 19-layer model from the paper:
 # "Very Deep Convolutional Networks for Large-Scale Image Recognition"
 # Original source: https://gist.github.com/ksimonyan/3785162f95cd2d5fee77
@@ -14,6 +17,8 @@ from lasagne.layers import Pool2DLayer as PoolLayer
 from lasagne.layers.dnn import Conv2DDNNLayer as ConvLayer
 from lasagne.nonlinearities import softmax
 
+import pickle
+import lasagne
 
 def build_model():
     net = {}
@@ -62,5 +67,10 @@ def build_model():
     net['fc8'] = DenseLayer(
         net['fc7_dropout'], num_units=1000, nonlinearity=None)
     net['prob'] = NonlinearityLayer(net['fc8'], softmax)
+
+    # I have downloaded the weights as suggested above, and here I am loading them into the network
+    vgg19 = pickle.load(open('models/vgg19.pkl'))
+    weights = vgg19['param values']
+    lasagne.layers.set_all_param_values(net['prob'], weights)
 
     return net
