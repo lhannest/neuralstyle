@@ -8,6 +8,7 @@ from models.vgg19 import build_model
 import matplotlib.pyplot as plt
 from PIL import Image
 import numpy as np
+import scipy
 
 import time
 
@@ -19,16 +20,21 @@ def timesince(t):
         m += 1
     return str(m) + ':' + str(int(t))
 
-def getImage(path, size=(300, 300)):
+def getImage(path, resize_to=None):
     """Loads and preprocesses the image, returning a 4D tensor."""
-    img = Image.open(path).resize(size)
+    if resize_to == None:
+        img = Image.open(path)
+    else:
+        img = Image.open(path).resize(resize_to)
     img = np.asarray(img).transpose(2, 0, 1)
     img = np.reshape(img, (1,) + img.shape)
     mean = np.mean(img)
     img = img - mean
+    print img.shape
     return img, mean
 
 def deprocess(img, mean):
+    """deprocesses image so that it can be desplayed by plt.imshow()"""
     img = np.asarray(img)
     img = img + mean
     img = img.reshape(img.shape[1:])
@@ -36,13 +42,15 @@ def deprocess(img, mean):
     return np.clip(img, 0, 255).astype('uint8')
 
 # Loading and preprocessing the images, and setting up the theano symbolic variables
-content_img, content_mean = getImage('images/photo.jpg')
-style_img, style_mean = getImage('images/art1.jpg')
+content_img, content_mean = getImage('images/big_photo2.jpg')
+style_img, style_mean = getImage('images/big_art2.jpg')
 
 # The content, style, and generated images. Unlike the paper, I am not randomly initializing the generated image.
 CON = theano.shared(np.asarray(content_img, dtype=theano.config.floatX))
 STY = theano.shared(np.asarray(style_img, dtype=theano.config.floatX))
-GEN = theano.shared(np.asarray(content_img, dtype=theano.config.floatX))
+X = T.vector()
+GEN = T.reshape(X, content_img.shape)
+# GEN = theano.shared(np.asarray(content_img, dtype=theano.config.floatX))
 
 # Here we build the VGG model, and get the filter responses of each image from the designated layers (not all will be used)
 model = build_model()
@@ -75,17 +83,40 @@ def style_loss(A, B):
     M = A.shape[2] * A.shape[3]
     return  (1. / 4 * N**2 * M**2) * T.sum(T.sqr(gram_A - gram_B))
 
-def total_loss(con, sty, gen):
-    # These weights are taken from the paper
-    alpha = 0.1e-3
-    beta  = 0.1
-    style_weight = 0.2
-    return alpha * content_loss(con, gen) + beta * style_loss(sty, gen, style_weight)
-
-content_layers = ['conv5_1', 'conv4_1', 'conv3_1']
+content_layers = ['conv5_1', 'conv4_1']
 style_layers = ['conv1_1', 'conv2_1', 'conv3_1']
 
 content_losses = [content_loss(GEN_F[layer], CON_F[layer]) for layer in content_layers]
 style_losses = [1e6 * style_loss(GEN_F[layer], STY_F[layer]) for layer in style_layers]
 
-total_loss = sum(content_losses) + sum(style_losses) / 1. * len(style_losses)
+alpha = 0.1
+beta = 2
+total_loss = alpha * sum(content_losses) + beta * sum(style_losses) / 1. * len(style_losses)
+
+loss = theano.function(inputs=[X], outputs=total_loss, allow_input_downcast=True)
+grad = theano.function(inputs=[X], outputs=T.grad(total_loss, wrt=X), allow_input_downcast=True)
+
+images = []
+x = content_img.flatten()
+
+def func(x):
+    """
+    A function to be used by scipy.optimize.fmin_l_bfgs_b.
+    Take a look at the documentation for fmin_l_bfgs_b to see why this is useful.
+    """
+    x = np.array(x, dtype='float64').flatten()
+    return loss(x), np.asarray(grad(x), dtype='float64')
+
+for i in range(30):
+    print 'waiting...'
+    time.sleep(10)
+    print 'starting', i
+    t = time.time()
+    x, f, d = scipy.optimize.fmin_l_bfgs_b(func, x, maxfun=15)
+    print timesince(t)
+x = np.asarray(x).reshape(content_img.shape)
+images.append(deprocess(x, content_mean))
+plt.imshow(deprocess(x, content_mean))
+plt.show()
+# import plot
+# plot.plot_all(images, 3, 2)
