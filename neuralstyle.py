@@ -10,18 +10,8 @@ from PIL import Image
 import numpy as np
 import scipy
 
-import time
-
-def timesince(t):
-    t = time.time() - t
-    m = 0
-    while t >= 60:
-        t -= 60
-        m += 1
-    return str(m) + ':' + str(int(t))
-
 def getImage(path, resize_to=None):
-    """Loads and preprocesses the image, returning a 4D tensor."""
+    """Loads, resizes and preprocesses the image, returning a 4D tensor."""
     if resize_to == None:
         img = Image.open(path)
     else:
@@ -30,7 +20,6 @@ def getImage(path, resize_to=None):
     img = np.reshape(img, (1,) + img.shape)
     mean = np.mean(img)
     img = img - mean
-    print img.shape
     return img, mean
 
 def deprocess(img, mean):
@@ -42,23 +31,25 @@ def deprocess(img, mean):
     return np.clip(img, 0, 255).astype('uint8')
 
 # Loading and preprocessing the images, and setting up the theano symbolic variables
-content_img, content_mean = getImage('images/big_photo2.jpg')
-style_img, style_mean = getImage('images/big_art2.jpg')
+content_img, content_mean = getImage('images/photo.jpg')
+style_img, style_mean = getImage('images/art1.jpg')
 
-# The content, style, and generated images. Unlike the paper, I am not randomly initializing the generated image.
+# Initializing theano shared variables for the content and style images
 CON = theano.shared(np.asarray(content_img, dtype=theano.config.floatX))
 STY = theano.shared(np.asarray(style_img, dtype=theano.config.floatX))
+
+# scipy.optimize.fmin_l_bfgs_b will want a flattened array for the input of the function to be optimized
 X = T.vector()
 GEN = T.reshape(X, content_img.shape)
-# GEN = theano.shared(np.asarray(content_img, dtype=theano.config.floatX))
 
-# Here we build the VGG model, and get the filter responses of each image from the designated layers (not all will be used)
+# Here we build the VGG-19 neural network, and get the filter responses of each image from the designated layers (not all will be used)
 model = build_model()
 layer_names = ['conv1_1', 'conv2_1', 'conv3_1', 'conv4_1', 'conv5_1']
 
-CON_F = {name: lasagne.layers.get_output(model[name], inputs=CON) for name in layer_names}
-STY_F = {name: lasagne.layers.get_output(model[name], inputs=STY) for name in layer_names}
-GEN_F = {name: lasagne.layers.get_output(model[name], inputs=GEN) for name in layer_names}
+# We're flattening each chanel of the output of the VGG-19
+CON_F = {name: T.flatten(lasagne.layers.get_output(model[name], inputs=CON), ndim=3) for name in layer_names}
+STY_F = {name: T.flatten(lasagne.layers.get_output(model[name], inputs=STY), ndim=3) for name in layer_names}
+GEN_F = {name: T.flatten(lasagne.layers.get_output(model[name], inputs=GEN), ndim=3) for name in layer_names}
 
 # Evaluate those filter responses and save as theano shared variables (so that we don't have to evaluate them over and over)
 CON_F = {name: theano.shared(F.eval()) for name, F in CON_F.items()}
@@ -83,14 +74,14 @@ def style_loss(A, B):
     M = A.shape[2] * A.shape[3]
     return  (1. / 4 * N**2 * M**2) * T.sum(T.sqr(gram_A - gram_B))
 
-content_layers = ['conv5_1', 'conv4_1']
-style_layers = ['conv1_1', 'conv2_1', 'conv3_1']
+content_layers = ['conv5_1']
+style_layers = ['conv1_1', 'conv2_1', 'conv3_1', 'conv4_1', 'conv5_1']
 
 content_losses = [content_loss(GEN_F[layer], CON_F[layer]) for layer in content_layers]
-style_losses = [1e6 * style_loss(GEN_F[layer], STY_F[layer]) for layer in style_layers]
+style_losses = [1e6 * style_loss(GEN_F[layer], STY_F[layer]) for i, layer in enumerate(style_layers)]
 
-alpha = 0.1
-beta = 2
+alpha = 0.1e-4
+beta = 0.1
 total_loss = alpha * sum(content_losses) + beta * sum(style_losses) / 1. * len(style_losses)
 
 loss = theano.function(inputs=[X], outputs=total_loss, allow_input_downcast=True)
@@ -107,16 +98,29 @@ def func(x):
     x = np.array(x, dtype='float64').flatten()
     return loss(x), np.asarray(grad(x), dtype='float64')
 
-for i in range(30):
-    print 'waiting...'
-    time.sleep(10)
+from subprocess import Popen, PIPE
+def getTemp():
+	cmd = ['nvidia-smi', '--query-gpu=temperature.gpu', '--format=csv,noheader']
+	p = Popen(cmd, stdout=PIPE)
+	out, err = p.communicate()
+	return out[:-1]
+
+t0 = 0
+images = []
+for i in range(5):
+    wait_time = t0
+    print 'waiting for ', wait_time, 'which is', timesince(wait_time)
+    time.sleep(wait_time)
     print 'starting', i
     t = time.time()
     x, f, d = scipy.optimize.fmin_l_bfgs_b(func, x, maxfun=15)
-    print timesince(t)
+    t0 = time.time() - t
+    print timesince(t), getTemp() + 'C'
+    images.append(deprocess(np.asarray(x).reshape(content_img.shape), content_mean))
 x = np.asarray(x).reshape(content_img.shape)
-images.append(deprocess(x, content_mean))
 plt.imshow(deprocess(x, content_mean))
+plt.gca().xaxis.set_major_locator(plt.NullLocator())
+plt.gca().yaxis.set_major_locator(plt.NullLocator())
 plt.show()
-# import plot
-# plot.plot_all(images, 3, 2)
+import plot
+plot.plot_all(images, 2, 5)
