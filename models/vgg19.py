@@ -22,7 +22,7 @@ import lasagne
 
 def build_model():
     net = {}
-    net['input'] = InputLayer((None, 3, 224, 224))
+    net['input'] = InputLayer((1, 3,  None, None))
     net['conv1_1'] = ConvLayer(
         net['input'], 64, 3, pad=1, flip_filters=False)
     net['conv1_2'] = ConvLayer(
@@ -60,17 +60,10 @@ def build_model():
     net['conv5_4'] = ConvLayer(
         net['conv5_3'], 512, 3, pad=1, flip_filters=False)
     net['pool5'] = PoolLayer(net['conv5_4'], 2, mode='average_exc_pad')
-    net['fc6'] = DenseLayer(net['pool5'], num_units=4096)
-    net['fc6_dropout'] = DropoutLayer(net['fc6'], p=0.5)
-    net['fc7'] = DenseLayer(net['fc6_dropout'], num_units=4096)
-    net['fc7_dropout'] = DropoutLayer(net['fc7'], p=0.5)
-    net['fc8'] = DenseLayer(
-        net['fc7_dropout'], num_units=1000, nonlinearity=None)
-    net['prob'] = NonlinearityLayer(net['fc8'], softmax)
 
     # I have downloaded the weights as suggested above, and here I am loading them into the network
     vgg19 = pickle.load(open('models/vgg19.pkl'))
     weights = vgg19['param values']
-    lasagne.layers.set_all_param_values(net['prob'], weights)
+    lasagne.layers.set_all_param_values(net['pool5'], weights)
 
     return net
