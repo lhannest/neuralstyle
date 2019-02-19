@@ -8,7 +8,7 @@ Here I've taken the content of this image:
 <img src="https://raw.githubusercontent.com/lhannest/neuralstyle/master/images/big_photo.jpg" alt="source content image" width="650" height="430">
 
 And I've used the style of this image:
-![alt text](https://raw.githubusercontent.com/lhannest/neuralstyle/master/images/big_art.jpg=650x430)
+<img src="https://raw.githubusercontent.com/lhannest/neuralstyle/master/images/big_art.jpg" alt="source style image" width="650" height="430">
 
 To generate this image:
-![alt text](https://raw.githubusercontent.com/lhannest/neuralstyle/master/images/results/result2.png=650x430)
+<img src="https://raw.githubusercontent.com/lhannest/neuralstyle/master/images/results/result2.png" alt="generated image" width="650" height="430">
